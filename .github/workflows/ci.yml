@@ -1,0 +1,24 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [master]
+
+jobs:
+  test-and-build:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run tests
+        run: swift test
+
+      - name: Build app bundle
+        run: Scripts/make-app.sh
+
+      - name: Sanity-check the bundle
+        run: |
+          test -x build/MonthPeek.app/Contents/MacOS/MonthPeek
+          /usr/libexec/PlistBuddy -c "Print :LSUIElement" build/MonthPeek.app/Contents/Info.plist | grep -q true
+          codesign --verify build/MonthPeek.app

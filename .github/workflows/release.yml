@@ -1,0 +1,103 @@
+name: Release
+
+# Pushes to master (including merged PRs) cut a release IFF the VERSION file
+# names a version that has not been tagged yet.
+
+on:
+  push:
+    branches: [master]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-master
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Read and validate VERSION
+        id: ver
+        run: |
+          VERSION="$(tr -d '[:space:]' < VERSION)"
+          if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::VERSION '$VERSION' is not semver (x.y.z)"
+            exit 1
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Skip if this version is already released
+        id: guard
+        run: |
+          if git rev-parse "v${{ steps.ver.outputs.version }}" >/dev/null 2>&1; then
+            echo "v${{ steps.ver.outputs.version }} already released — nothing to do."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Run tests
+        if: steps.guard.outputs.skip == 'false'
+        run: swift test
+
+      - name: Build universal app
+        if: steps.guard.outputs.skip == 'false'
+        run: Scripts/make-app.sh --universal
+
+      - name: Package
+        if: steps.guard.outputs.skip == 'false'
+        run: ditto -c -k --keepParent build/MonthPeek.app "MonthPeek-${{ steps.ver.outputs.version }}.zip"
+
+      - name: Build release notes
+        if: steps.guard.outputs.skip == 'false'
+        run: |
+          VERSION="${{ steps.ver.outputs.version }}"
+          # Pull the CHANGELOG section for this version (between its heading and the next).
+          awk -v v="$VERSION" '
+            $0 ~ "^## \\[" v "\\]" {grab=1; next}
+            grab && /^## \[/ {exit}
+            grab {print}
+          ' CHANGELOG.md > notes.md
+          if [ ! -s notes.md ]; then
+            echo "Release v$VERSION." > notes.md
+          fi
+          {
+            echo ""
+            echo "## Install"
+            echo ""
+            echo "1. Download \`MonthPeek-$VERSION.zip\` below and unzip it."
+            echo "2. Move \`MonthPeek.app\` to \`/Applications\`."
+            echo "3. Open \`MonthPeek.app\`."
+            echo ""
+            echo "> [!NOTE]"
+            echo "> On first launch, macOS may warn that it *\"could not verify MonthPeek is free of malware\"*. **This is expected and the app is completely safe** — MonthPeek is open source and built by GitHub Actions straight from this repository, but it is not notarized by Apple (notarization requires a paid developer account, which this project doesn't have). The warning only offers **Done** and **Move to Bin**, so:"
+            echo ">"
+            echo "> 1. Click **Done** (not Move to Bin)."
+            echo "> 2. Open **System Settings → Privacy & Security**, scroll down to *\"MonthPeek\" was blocked to protect your Mac*, and click **Open Anyway**."
+            echo "> 3. Confirm, and MonthPeek launches. This is needed only once."
+            echo ">"
+            echo "> Alternatively, run \`xattr -d com.apple.quarantine /Applications/MonthPeek.app\` in Terminal and open the app normally."
+            echo ""
+            echo "MonthPeek requests **no permissions** and makes **no network connections** — ever."
+          } >> notes.md
+
+      - name: Tag and release
+        if: steps.guard.outputs.skip == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION="${{ steps.ver.outputs.version }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a "v$VERSION" -m "MonthPeek v$VERSION"
+          git push origin "v$VERSION"
+          gh release create "v$VERSION" "MonthPeek-$VERSION.zip" \
+            --title "MonthPeek v$VERSION" \
+            --latest \
+            --notes-file notes.md
