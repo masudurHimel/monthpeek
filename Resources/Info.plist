@@ -20,6 +20,9 @@
 	<string>14.0</string>
 	<key>LSUIElement</key>
 	<true/>
+	<!-- Only requested when the user turns on "Show calendar events". -->
+	<key>NSCalendarsFullAccessUsageDescription</key>
+	<string>MonthPeek reads your calendar events to list them under the month grid. It never modifies them.</string>
 	<key>NSHighResolutionCapable</key>
 	<true/>
 </dict>

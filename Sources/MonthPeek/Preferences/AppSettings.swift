@@ -7,6 +7,38 @@ enum SettingsKey {
     static let pinPanel = "pinPanel"
     static let panelWidth = "panelWidth"
     static let panelHeight = "panelHeight"
+    static let showEvents = "showEvents"
+    static let showEventDots = "showEventDots"
+    static let hiddenCalendarIDs = "hiddenCalendarIDs"
+}
+
+/// Calendars the user unchecked in Preferences. Stored as the *hidden* set
+/// so calendars added later show up without any action.
+enum HiddenCalendars {
+    static var current: Set<String> {
+        Set(UserDefaults.standard.stringArray(forKey: SettingsKey.hiddenCalendarIDs) ?? [])
+    }
+
+    static func set(_ ids: Set<String>) {
+        UserDefaults.standard.set(ids.sorted(), forKey: SettingsKey.hiddenCalendarIDs)
+    }
+}
+
+/// Snapshot of every setting the events feature depends on, so observers can
+/// tell a relevant change from an unrelated UserDefaults write.
+struct EventSettings: Equatable {
+    var showEvents: Bool
+    var showDots: Bool
+    var hiddenCalendarIDs: Set<String>
+
+    static var current: EventSettings {
+        let defaults = UserDefaults.standard
+        return EventSettings(
+            showEvents: defaults.bool(forKey: SettingsKey.showEvents),
+            showDots: defaults.bool(forKey: SettingsKey.showEventDots),
+            hiddenCalendarIDs: HiddenCalendars.current
+        )
+    }
 }
 
 enum AppearanceMode: String, CaseIterable, Identifiable {

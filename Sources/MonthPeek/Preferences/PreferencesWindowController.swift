@@ -24,7 +24,13 @@ final class PreferencesWindowController: NSObject {
         newWindow.title = "MonthPeek Preferences"
         newWindow.isReleasedWhenClosed = false
 
-        let hosting = NSHostingView(rootView: PreferencesView())
+        // The calendar checklist comes and goes with the events toggle, so
+        // the view reports its size and the window follows it explicitly.
+        // (NSHostingView's preferredContentSize option collapses this
+        // non-resizable window to 0×0 instead.)
+        let hosting = NSHostingView(rootView: PreferencesView(onSizeChange: { [weak self] size in
+            self?.fit(to: size)
+        }))
         newWindow.contentView = hosting
         newWindow.setContentSize(hosting.fittingSize)
 
@@ -33,5 +39,16 @@ final class PreferencesWindowController: NSObject {
 
         window = newWindow
         return newWindow
+    }
+
+    /// Resize the window to the content's new size, keeping the top-left
+    /// corner in place so the title bar does not jump.
+    private func fit(to size: CGSize) {
+        guard let window, size.width > 0, size.height > 0 else { return }
+        let current = window.contentRect(forFrameRect: window.frame).size
+        guard abs(current.height - size.height) > 0.5 || abs(current.width - size.width) > 0.5 else { return }
+        var frame = window.frameRect(forContentRect: NSRect(origin: .zero, size: size))
+        frame.origin = NSPoint(x: window.frame.minX, y: window.frame.maxY - frame.height)
+        window.setFrame(frame, display: true, animate: window.isVisible)
     }
 }
