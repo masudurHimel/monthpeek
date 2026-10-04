@@ -12,7 +12,7 @@ Click the date in your menu bar and a clean, translucent calendar card pops down
 - **Month navigation** with the ← → buttons, scroll wheel, or trackpad swipe; smooth slide-and-fade transitions. Click the month title to jump back to today.
 - **Today** highlighted with a filled accent circle; adjacent-month days dimmed; weekends subtly tinted; soft hover states.
 - **Calendar events, if you want them** — an opt-in *Show calendar events* toggle lists the selected day's events under the grid, colored per calendar exactly as in Calendar.app, with an optional dot under days that have events and a checklist to hide calendars. Read-only, off by default, and MonthPeek never asks for calendar access until you turn it on.
-- **Resizable** by dragging edges/corners (240×260 up to 600×640) — typography and spacing scale fluidly with the panel, and the size is remembered.
+- **Resizable** by dragging edges/corners (240×260 up to 600×640) — typography and spacing scale fluidly with the panel, and every open starts at the default size.
 - **Esc closes**, click-outside closes (unless pinned), springy pop-down/retract-up animation.
 - **Preferences**: Appearance (System / Light / Dark), week start (Sunday / Monday), week numbers, pin panel, launch at login.
 
@@ -23,7 +23,7 @@ MonthPeek is a calendar you *look at* — by design it has no access to anything
 - **No permissions.** It never triggers a macOS permission prompt. No Calendar/EventKit access, no Accessibility, no Screen Recording — nothing. There are no events, reminders, or integrations to grant access to.
 - **No network. No connection required.** The app makes zero network requests — no analytics, no telemetry, no update checks. It works identically with Wi-Fi off, forever.
 - **No third-party dependencies.** Pure Swift + SwiftUI + AppKit. The entire codebase is small enough to audit in an afternoon, and you can verify every claim above with a few greps.
-- The only thing it stores is your preferences and panel size, in its own `UserDefaults` domain on your Mac.
+- The only thing it stores is your preferences, in its own `UserDefaults` domain on your Mac.
 
 ## Install
 
@@ -50,7 +50,7 @@ MonthPeek is a calendar you *look at* — by design it has no access to anything
 | Right-click / ctrl-click the icon | Menu: Preferences…, Quit |
 | ← → buttons, scroll, or swipe | Previous / next month |
 | Click the month title | Jump back to today |
-| Drag panel edges/corners | Resize (remembered) |
+| Drag panel edges/corners | Resize (resets to default on next open) |
 | Drag the panel background | Move the panel |
 | Esc or click outside | Close the panel (Pin panel keeps it open) |
 
@@ -127,7 +127,7 @@ Sources/MonthPeek/
   MonthPeekApp.swift                 Entry point (accessory app, no Dock icon)
   StatusItemController.swift         Menu bar icon + left/right click routing
   Panel/CalendarPanel.swift          Non-activating floating NSPanel
-  Panel/PanelController.swift        Show/hide, positioning, size persistence
+  Panel/PanelController.swift        Show/hide, positioning, sizing
   Calendar/MonthGrid.swift           Pure date math (unit tested)
   Calendar/CalendarViewModel.swift   Month state, scroll/swipe navigation
   Calendar/CalendarView.swift        SwiftUI calendar UI + animations

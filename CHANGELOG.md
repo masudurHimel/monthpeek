@@ -28,6 +28,9 @@ request, when you intend to ship. Merging that PR to `master` cuts the release.
 - The "no permissions" rule is now "nothing asks by default": features that
   need a permission are opt-in, read-only, and documented. Turning on calendar
   events triggers the macOS Calendars prompt; leaving it off never does.
+- The panel now opens at its default size every time. Resizing still works
+  while it's open, but the size is no longer remembered across opens or
+  launches.
 
 ## [0.1.0] - 2026-08-09
 
