@@ -2,14 +2,30 @@ import AppKit
 import SwiftUI
 
 /// Root of the panel's SwiftUI hierarchy: translucent material card with
-/// the calendar on top.
+/// the calendar on top and, when the events feature is on, the events band
+/// beneath it. The band's height comes from `BandMetrics`, the same formula
+/// the PanelController uses to size the window, so the grid always keeps
+/// the height the user saved.
 struct PanelRootView: View {
     @ObservedObject var viewModel: CalendarViewModel
 
     var body: some View {
         ZStack {
             VisualEffectView()
-            CalendarView(viewModel: viewModel)
+            GeometryReader { geo in
+                let band = BandMetrics(scale: BandMetrics.scale(forPanelWidth: geo.size.width))
+                let bandHeight = viewModel.eventsEnabled
+                    ? band.height(forRows: viewModel.selectedEvents.count) : 0
+                VStack(spacing: 0) {
+                    CalendarView(viewModel: viewModel)
+                        .frame(height: max(0, geo.size.height - bandHeight))
+                    if viewModel.eventsEnabled {
+                        EventListView(viewModel: viewModel, metrics: band)
+                            .frame(height: bandHeight)
+                    }
+                }
+                .frame(width: geo.size.width, height: geo.size.height, alignment: .top)
+            }
         }
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         .overlay(
@@ -142,10 +158,15 @@ struct CalendarView: View {
                                 DayCell(
                                     day: day,
                                     isToday: calendar.isDate(day.date, inSameDayAs: viewModel.today),
+                                    isSelected: viewModel.eventsEnabled
+                                        && calendar.isDate(day.date, inSameDayAs: viewModel.selectedDate),
+                                    dot: dotStyle(for: day),
                                     circleSize: circleSize,
                                     fontSize: m.dayFontSize
                                 )
                                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+                                .contentShape(Rectangle())
+                                .onTapGesture { viewModel.select(day.date) }
                             }
                         }
                     }
@@ -159,6 +180,11 @@ struct CalendarView: View {
             .animation(.spring(response: 0.35, dampingFraction: 0.85), value: viewModel.displayedMonth)
         }
         .clipped()
+    }
+
+    private func dotStyle(for day: MonthGrid.Day) -> EventSchedule.DotStyle {
+        guard viewModel.eventsEnabled, viewModel.showDots else { return .none }
+        return EventSchedule.dotStyle(for: viewModel.eventsByDay[calendar.startOfDay(for: day.date)] ?? [])
     }
 
     private var monthTransition: AnyTransition {
@@ -185,10 +211,13 @@ struct CalendarView: View {
     }()
 }
 
-/// One day number, with the today highlight and a soft hover circle.
+/// One day number, with the today highlight, the selection ring, an
+/// optional event dot, and a soft hover circle.
 struct DayCell: View {
     let day: MonthGrid.Day
     let isToday: Bool
+    var isSelected = false
+    var dot: EventSchedule.DotStyle = .none
     let circleSize: CGFloat
     let fontSize: CGFloat
 
@@ -199,6 +228,11 @@ struct DayCell: View {
             if isToday {
                 Circle()
                     .fill(Color.accentColor)
+                    .frame(width: circleSize, height: circleSize)
+            } else if isSelected {
+                Circle()
+                    .fill(Color.primary.opacity(0.08))
+                    .overlay(Circle().strokeBorder(Color.accentColor, lineWidth: 1.5))
                     .frame(width: circleSize, height: circleSize)
             } else {
                 Circle()
@@ -212,10 +246,27 @@ struct DayCell: View {
                 .font(.system(size: fontSize, weight: isToday ? .semibold : .regular, design: .rounded))
                 .monospacedDigit()
                 .foregroundStyle(textColor)
+            if let dotColor {
+                Circle()
+                    .fill(dotColor)
+                    .frame(width: dotSize, height: dotSize)
+                    .opacity(day.isInDisplayedMonth ? 1 : 0.35)
+                    .offset(y: circleSize / 2 - dotSize - 3 * (circleSize / 32))
+            }
         }
         .contentShape(Rectangle())
         .onHover { inside in
             hovering = inside
+        }
+    }
+
+    private var dotSize: CGFloat { max(3, circleSize / 8) }
+
+    private var dotColor: Color? {
+        switch dot {
+        case .none: return nil
+        case .calendar(let color): return isToday ? .white.opacity(0.9) : color.color
+        case .mixed: return isToday ? .white.opacity(0.9) : Color(nsColor: .systemGray)
         }
     }
 
@@ -250,7 +301,7 @@ private struct Metrics {
     let size: CGSize
     let showWeekNumbers: Bool
 
-    var scale: CGFloat { max(0.8, min(2.2, size.width / 300)) }
+    var scale: CGFloat { BandMetrics.scale(forPanelWidth: size.width) }
 
     var outerPadding: CGFloat { 14 * scale }
     var sectionSpacing: CGFloat { 8 * scale }
