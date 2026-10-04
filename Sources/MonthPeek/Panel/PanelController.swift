@@ -2,16 +2,17 @@ import AppKit
 import Combine
 import SwiftUI
 
-/// Shows, hides, and positions the floating calendar panel, persists its
-/// size across launches, and closes it when the user clicks elsewhere
-/// (unless the panel is pinned).
+/// Shows, hides, and positions the floating calendar panel, and closes it
+/// when the user clicks elsewhere (unless the panel is pinned).
 ///
-/// The saved size describes the *grid*. When the events feature is on, the
-/// events band is added below it and the window frame grows and shrinks
-/// with the selected day's row count, top edge anchored under the menu bar.
+/// Every open starts from the default *grid* size; a resize lasts only until
+/// the panel is next shown. When the events feature is on, the events band
+/// is added below the grid and the window frame grows and shrinks with the
+/// selected day's row count, top edge anchored under the menu bar.
 final class PanelController: NSObject, NSWindowDelegate {
     private static let minGridSize = NSSize(width: 240, height: 260)
     private static let maxGridSize = NSSize(width: 600, height: 640)
+    private static let defaultGridSize = NSSize(width: 300, height: 324)
 
     private var panel: CalendarPanel?
     private let viewModel = CalendarViewModel()
@@ -47,7 +48,7 @@ final class PanelController: NSObject, NSWindowDelegate {
         EventStoreService.shared.refreshSources()
         viewModel.resetToToday()
         viewModel.reloadEvents()
-        updateBandHeight(animated: false)
+        resetToDefaultSize(panel)
         position(panel, relativeTo: statusItem)
 
         panel.makeKeyAndOrderFront(nil)
@@ -83,15 +84,7 @@ final class PanelController: NSObject, NSWindowDelegate {
     private func ensurePanel() -> CalendarPanel {
         if let panel { return panel }
 
-        let defaults = UserDefaults.standard
-        var width = defaults.double(forKey: SettingsKey.panelWidth)
-        var height = defaults.double(forKey: SettingsKey.panelHeight)
-        if width == 0 { width = 300 }
-        if height == 0 { height = 324 }
-        width = min(max(width, Self.minGridSize.width), Self.maxGridSize.width)
-        height = min(max(height, Self.minGridSize.height), Self.maxGridSize.height)
-
-        let newPanel = CalendarPanel(contentRect: NSRect(x: 0, y: 0, width: width, height: height))
+        let newPanel = CalendarPanel(contentRect: NSRect(origin: .zero, size: Self.defaultGridSize))
         newPanel.delegate = self
         newPanel.onEscape = { [weak self] in self?.hide() }
         newPanel.contentView = NSHostingView(rootView: PanelRootView(viewModel: viewModel))
@@ -125,6 +118,15 @@ final class PanelController: NSObject, NSWindowDelegate {
     }
 
     // MARK: - Events band sizing
+
+    /// Snap the panel back to the default grid size plus the band the
+    /// current selection needs, discarding any resize from a previous open.
+    private func resetToDefaultSize(_ panel: NSPanel) {
+        bandHeight = desiredBandHeight(forWidth: Self.defaultGridSize.width)
+        applySizeLimits(to: panel)
+        let size = NSSize(width: Self.defaultGridSize.width, height: Self.defaultGridSize.height + bandHeight)
+        panel.setFrame(NSRect(origin: panel.frame.origin, size: size), display: false)
+    }
 
     private func desiredBandHeight(forWidth width: CGFloat) -> CGFloat {
         guard viewModel.eventsEnabled else { return 0 }
@@ -187,10 +189,8 @@ final class PanelController: NSObject, NSWindowDelegate {
     func windowDidEndLiveResize(_ notification: Notification) {
         guard let panel else { return }
         // The band's height depends on the width the user just chose, and
-        // the SwiftUI layout already reflects that; store only the grid part.
+        // the SwiftUI layout already reflects that.
         bandHeight = desiredBandHeight(forWidth: panel.frame.width)
         applySizeLimits(to: panel)
-        UserDefaults.standard.set(Double(panel.frame.width), forKey: SettingsKey.panelWidth)
-        UserDefaults.standard.set(Double(panel.frame.height - bandHeight), forKey: SettingsKey.panelHeight)
     }
 }

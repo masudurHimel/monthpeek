@@ -5,8 +5,6 @@ enum SettingsKey {
     static let weekStart = "weekStartsOn"
     static let showWeekNumbers = "showWeekNumbers"
     static let pinPanel = "pinPanel"
-    static let panelWidth = "panelWidth"
-    static let panelHeight = "panelHeight"
     static let showEvents = "showEvents"
     static let showEventDots = "showEventDots"
     static let hiddenCalendarIDs = "hiddenCalendarIDs"
