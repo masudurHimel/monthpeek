@@ -21,4 +21,5 @@ jobs:
         run: |
           test -x build/MonthPeek.app/Contents/MacOS/MonthPeek
           /usr/libexec/PlistBuddy -c "Print :LSUIElement" build/MonthPeek.app/Contents/Info.plist | grep -q true
+          /usr/libexec/PlistBuddy -c "Print :NSCalendarsFullAccessUsageDescription" build/MonthPeek.app/Contents/Info.plist | grep -q .
           codesign --verify build/MonthPeek.app

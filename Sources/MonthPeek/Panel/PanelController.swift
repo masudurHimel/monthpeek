@@ -1,15 +1,27 @@
 import AppKit
+import Combine
 import SwiftUI
 
-/// Shows, hides, and positions the floating calendar panel, persists its
-/// size across launches, and closes it when the user clicks elsewhere
-/// (unless the panel is pinned).
+/// Shows, hides, and positions the floating calendar panel, and closes it
+/// when the user clicks elsewhere (unless the panel is pinned).
+///
+/// Every open starts from the default *grid* size; a resize lasts only until
+/// the panel is next shown. When the events feature is on, the events band
+/// is added below the grid and the window frame grows and shrinks with the
+/// selected day's row count, top edge anchored under the menu bar.
 final class PanelController: NSObject, NSWindowDelegate {
+    private static let minGridSize = NSSize(width: 240, height: 260)
+    private static let maxGridSize = NSSize(width: 600, height: 640)
+    private static let defaultGridSize = NSSize(width: 300, height: 324)
+
     private var panel: CalendarPanel?
     private let viewModel = CalendarViewModel()
     private var scrollMonitor: Any?
+    private var cancellables = Set<AnyCancellable>()
     private var lastAutoClose: TimeInterval = 0
     private var isClosing = false
+    /// Height currently added below the grid for the events band.
+    private var bandHeight: CGFloat = 0
 
     private var isPinned: Bool {
         UserDefaults.standard.bool(forKey: SettingsKey.pinPanel)
@@ -32,7 +44,11 @@ final class PanelController: NSObject, NSWindowDelegate {
     func show(relativeTo statusItem: NSStatusItem) {
         let panel = ensurePanel()
         isClosing = false
+        EventStoreService.shared.requestAccessIfWanted()
+        EventStoreService.shared.refreshSources()
         viewModel.resetToToday()
+        viewModel.reloadEvents()
+        resetToDefaultSize(panel)
         position(panel, relativeTo: statusItem)
 
         panel.makeKeyAndOrderFront(nil)
@@ -68,19 +84,23 @@ final class PanelController: NSObject, NSWindowDelegate {
     private func ensurePanel() -> CalendarPanel {
         if let panel { return panel }
 
-        let defaults = UserDefaults.standard
-        var width = defaults.double(forKey: SettingsKey.panelWidth)
-        var height = defaults.double(forKey: SettingsKey.panelHeight)
-        if width == 0 { width = 300 }
-        if height == 0 { height = 324 }
-        width = min(max(width, 240), 600)
-        height = min(max(height, 260), 640)
-
-        let newPanel = CalendarPanel(contentRect: NSRect(x: 0, y: 0, width: width, height: height))
+        let newPanel = CalendarPanel(contentRect: NSRect(origin: .zero, size: Self.defaultGridSize))
         newPanel.delegate = self
         newPanel.onEscape = { [weak self] in self?.hide() }
         newPanel.contentView = NSHostingView(rootView: PanelRootView(viewModel: viewModel))
         panel = newPanel
+
+        // Anything that changes the band's row count resizes the window.
+        viewModel.$eventsEnabled.map { _ in () }
+            .merge(with: viewModel.$selectedDate.map { _ in () })
+            .merge(with: viewModel.$eventsByDay.map { _ in () })
+            .receive(on: RunLoop.main)
+            .sink { [weak self] in
+                guard let self else { return }
+                self.updateBandHeight(animated: self.isVisible && !self.isClosing)
+            }
+            .store(in: &cancellables)
+
         return newPanel
     }
 
@@ -97,13 +117,56 @@ final class PanelController: NSObject, NSWindowDelegate {
         panel.setFrame(NSRect(x: x, y: y, width: size.width, height: size.height), display: true)
     }
 
+    // MARK: - Events band sizing
+
+    /// Snap the panel back to the default grid size plus the band the
+    /// current selection needs, discarding any resize from a previous open.
+    private func resetToDefaultSize(_ panel: NSPanel) {
+        bandHeight = desiredBandHeight(forWidth: Self.defaultGridSize.width)
+        applySizeLimits(to: panel)
+        let size = NSSize(width: Self.defaultGridSize.width, height: Self.defaultGridSize.height + bandHeight)
+        panel.setFrame(NSRect(origin: panel.frame.origin, size: size), display: false)
+    }
+
+    private func desiredBandHeight(forWidth width: CGFloat) -> CGFloat {
+        guard viewModel.eventsEnabled else { return 0 }
+        let metrics = BandMetrics(scale: BandMetrics.scale(forPanelWidth: width))
+        return metrics.height(forRows: viewModel.selectedEvents.count)
+    }
+
+    /// Re-derive the band height from the view model and grow or shrink the
+    /// window by the difference, keeping the top edge where it is.
+    private func updateBandHeight(animated: Bool) {
+        guard let panel else { return }
+        let newBand = desiredBandHeight(forWidth: panel.frame.width)
+        let delta = newBand - bandHeight
+        guard abs(delta) > 0.5 else { return }
+        bandHeight = newBand
+        applySizeLimits(to: panel)
+
+        var frame = panel.frame
+        frame.size.height += delta
+        frame.origin.y -= delta
+        panel.setFrame(frame, display: true, animate: animated && panel.isVisible)
+    }
+
+    private func applySizeLimits(to panel: NSPanel) {
+        panel.minSize = NSSize(width: Self.minGridSize.width, height: Self.minGridSize.height + bandHeight)
+        panel.maxSize = NSSize(width: Self.maxGridSize.width, height: Self.maxGridSize.height + bandHeight)
+    }
+
     // MARK: - Scroll wheel / trackpad month navigation
 
     private func installScrollMonitor() {
         guard scrollMonitor == nil else { return }
         scrollMonitor = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { [weak self] event in
-            guard let self, event.window === self.panel else { return event }
-            self.viewModel.handleScroll(event)
+            guard let self, let panel = self.panel, event.window === panel else { return event }
+            // Only the grid flips months; over the events band the wheel
+            // scrolls the list, so let the event through untouched.
+            let contentHeight = panel.contentView?.bounds.height ?? panel.frame.height
+            if event.locationInWindow.y >= self.bandHeight || contentHeight <= self.bandHeight {
+                self.viewModel.handleScroll(event)
+            }
             return event
         }
     }
@@ -125,7 +188,9 @@ final class PanelController: NSObject, NSWindowDelegate {
 
     func windowDidEndLiveResize(_ notification: Notification) {
         guard let panel else { return }
-        UserDefaults.standard.set(Double(panel.frame.width), forKey: SettingsKey.panelWidth)
-        UserDefaults.standard.set(Double(panel.frame.height), forKey: SettingsKey.panelHeight)
+        // The band's height depends on the width the user just chose, and
+        // the SwiftUI layout already reflects that.
+        bandHeight = desiredBandHeight(forWidth: panel.frame.width)
+        applySizeLimits(to: panel)
     }
 }

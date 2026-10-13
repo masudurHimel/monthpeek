@@ -11,7 +11,8 @@ Click the date in your menu bar and a clean, translucent calendar card pops down
 - **Floats above everything** — regular apps, other Spaces, and fullscreen apps — and never steals focus from the app you're using.
 - **Month navigation** with the ← → buttons, scroll wheel, or trackpad swipe; smooth slide-and-fade transitions. Click the month title to jump back to today.
 - **Today** highlighted with a filled accent circle; adjacent-month days dimmed; weekends subtly tinted; soft hover states.
-- **Resizable** by dragging edges/corners (240×260 up to 600×640) — typography and spacing scale fluidly with the panel, and the size is remembered.
+- **Calendar events, if you want them** — an opt-in *Show calendar events* toggle lists the selected day's events under the grid, colored per calendar exactly as in Calendar.app, with an optional dot under days that have events and a checklist to hide calendars. Read-only, off by default, and MonthPeek never asks for calendar access until you turn it on.
+- **Resizable** by dragging edges/corners (240×260 up to 600×640) — typography and spacing scale fluidly with the panel, and every open starts at the default size.
 - **Esc closes**, click-outside closes (unless pinned), springy pop-down/retract-up animation.
 - **Preferences**: Appearance (System / Light / Dark), week start (Sunday / Monday), week numbers, pin panel, launch at login.
 
@@ -22,7 +23,7 @@ MonthPeek is a calendar you *look at* — by design it has no access to anything
 - **No permissions.** It never triggers a macOS permission prompt. No Calendar/EventKit access, no Accessibility, no Screen Recording — nothing. There are no events, reminders, or integrations to grant access to.
 - **No network. No connection required.** The app makes zero network requests — no analytics, no telemetry, no update checks. It works identically with Wi-Fi off, forever.
 - **No third-party dependencies.** Pure Swift + SwiftUI + AppKit. The entire codebase is small enough to audit in an afternoon, and you can verify every claim above with a few greps.
-- The only thing it stores is your preferences and panel size, in its own `UserDefaults` domain on your Mac.
+- The only thing it stores is your preferences, in its own `UserDefaults` domain on your Mac.
 
 ## Install
 
@@ -49,7 +50,7 @@ MonthPeek is a calendar you *look at* — by design it has no access to anything
 | Right-click / ctrl-click the icon | Menu: Preferences…, Quit |
 | ← → buttons, scroll, or swipe | Previous / next month |
 | Click the month title | Jump back to today |
-| Drag panel edges/corners | Resize (remembered) |
+| Drag panel edges/corners | Resize (resets to default on next open) |
 | Drag the panel background | Move the panel |
 | Esc or click outside | Close the panel (Pin panel keeps it open) |
 
@@ -62,6 +63,12 @@ Right-click the menu bar icon → **Preferences…**
 - **Show week numbers** — adds a week-number gutter to the grid
 - **Pin panel** — keep the calendar open when clicking elsewhere
 - **Launch at login** — uses Apple's `SMAppService`; no helper app, no daemon
+- **Show calendar events** — off by default. Turning it on asks macOS for read access to your calendars and adds an events band under the grid showing the selected day. Click a day to select it; today is selected whenever the panel opens, with the list starting at the next event still ahead. Click an event to open it in Calendar.app.
+- **Show event dots in the grid** — off by default. A small dot under days with events, in the calendar's color (gray when several calendars share a day).
+- **Calendars** — with events on, a checklist of every calendar from Calendar.app. Uncheck to hide one; calendars you add later show up automatically.
+
+> [!NOTE]
+> **About the calendar permission.** MonthPeek only *reads* events and only when *Show calendar events* is on; it never creates, edits, or deletes anything, and it still makes no network requests. Because builds are ad-hoc signed (see below), macOS ties the grant to each specific build: expect to be asked again after updating. If the toggle refuses to stay on, allow MonthPeek under **System Settings → Privacy & Security → Calendars**.
 
 ## Build from source
 
@@ -120,20 +127,23 @@ Sources/MonthPeek/
   MonthPeekApp.swift                 Entry point (accessory app, no Dock icon)
   StatusItemController.swift         Menu bar icon + left/right click routing
   Panel/CalendarPanel.swift          Non-activating floating NSPanel
-  Panel/PanelController.swift        Show/hide, positioning, size persistence
+  Panel/PanelController.swift        Show/hide, positioning, sizing
   Calendar/MonthGrid.swift           Pure date math (unit tested)
   Calendar/CalendarViewModel.swift   Month state, scroll/swipe navigation
   Calendar/CalendarView.swift        SwiftUI calendar UI + animations
+  Events/EventSchedule.swift         Pure event grouping / dot / sizing rules (unit tested)
+  Events/EventStoreService.swift     Read-only EventKit wrapper (only file that imports EventKit)
+  Events/EventListView.swift         Events band under the grid
   Preferences/                       Preferences window + settings storage
 Resources/Info.plist                 LSUIElement bundle plist
 Scripts/make-app.sh                  Build → bundle → sign
-Tests/MonthPeekTests/                MonthGrid tests (swift test)
+Tests/MonthPeekTests/                MonthGrid + EventSchedule tests (swift test)
 .github/workflows/                   CI + automated releases
 ```
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md). The short version: keep it minimal, keep it dependency-free, and never add anything that needs a permission prompt or a network connection.
+See [CONTRIBUTING.md](CONTRIBUTING.md). The short version: keep it minimal, keep it dependency-free, and never add anything that needs a permission prompt or a network connection *by default* — opt-in, read-only features are the one exception, and they must stay off until the user turns them on.
 
 ## License
 
