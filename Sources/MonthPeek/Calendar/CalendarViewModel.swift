@@ -163,13 +163,44 @@ final class CalendarViewModel: ObservableObject {
         let fresh = EventSettings.current
         let enabled = eventStore.isEnabled
         guard force || fresh != settings || enabled != eventsEnabled else { return }
+        let wasEnabled = eventsEnabled
         settings = fresh
-        if enabled != eventsEnabled { eventsEnabled = enabled }
         if fresh.showDots != showDots { showDots = fresh.showDots }
+
+        // Turning on: load the visible month *before* flipping the flag, so
+        // the band opens in a single animation straight to its final height.
+        // Flipping first would open it empty ("No events"), then resize again
+        // when the fetch lands — the double bounce.
+        if enabled && !wasEnabled {
+            loadThenEnable()
+            return
+        }
+
+        if enabled != wasEnabled { eventsEnabled = enabled }  // turning off
         // Hidden calendars or the store itself changed: every cached month
         // is suspect, so start over from the visible one.
         eventsByDay = [:]
         reloadEvents()
+    }
+
+    /// Fetch the visible window first, then publish the events and enable the
+    /// band together so the panel grows exactly once, to the right size.
+    private func loadThenEnable() {
+        let calendar = Calendar.current
+        let month = displayedMonth
+        let start = calendar.date(byAdding: .day, value: -7, to: month)!
+        let end = calendar.date(byAdding: .day, value: 49, to: month)!
+        let hidden = settings.hiddenCalendarIDs
+        let store = eventStore
+        Task { @MainActor [weak self] in
+            let items = await store.events(from: start, to: end, excluding: hidden)
+            guard let self, self.eventStore.isEnabled, !self.eventsEnabled,
+                  self.settings.hiddenCalendarIDs == hidden else { return }
+            // Set the data first (no resize — the band is still off), then
+            // enable: both land in one SwiftUI update, so one animation.
+            self.eventsByDay = EventSchedule.group(items, calendar: calendar)
+            self.eventsEnabled = true
+        }
     }
 
     /// Fetch the six visible weeks (plus slack for either week-start
