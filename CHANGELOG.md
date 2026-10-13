@@ -23,6 +23,10 @@ request, when you intend to ship. Merging that PR to `master` cuts the release.
   event still ahead (scroll up for earlier ones); other days start at the top.
 - Scroll wheel over the band scrolls the list; over the grid it still flips
   months.
+- Events toggle in the panel header, beside the month name: turn the events
+  band on and off without opening Preferences. It writes the same setting (and
+  asks for calendar access the first time) and lights up in the accent color
+  while the band is showing.
 
 ### Changed
 - The "no permissions" rule is now "nothing asks by default": features that

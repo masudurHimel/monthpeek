@@ -35,6 +35,12 @@ final class CalendarPanel: NSPanel {
         maxSize = NSSize(width: 600, height: 640)
     }
 
+    // The events band grows/shrinks the window via setFrame(animate:). Pin
+    // that to one calm, constant duration regardless of how many rows change
+    // so it never snaps, and so the SwiftUI band animation (same 0.3s ease)
+    // stays in lockstep and the grid above holds still.
+    override func animationResizeTime(_ newFrame: NSRect) -> TimeInterval { 0.3 }
+
     // Key status lets the panel receive Esc and scroll events without
     // activating the app (guaranteed by .nonactivatingPanel).
     override var canBecomeKey: Bool { true }
